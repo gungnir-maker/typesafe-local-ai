@@ -1,0 +1,26 @@
+Write `safe_join(base, user_path)` in safejoin.py.
+
+Join a caller-supplied relative path onto a base directory, refusing anything
+that would escape it.
+
+Rules:
+- `base` is a directory path. `user_path` is untrusted input.
+- Return the absolute path of the file inside `base`.
+- Raise ValueError if the result would fall outside `base`, including when
+  `user_path` is absolute, contains `..` that climbs above `base`, or is empty.
+- `..` segments that stay inside `base` are allowed: "a/../b.txt" is fine.
+- The check must be on the resolved path, so a `..` that is only neutralised by
+  a later segment is still refused if it escapes.
+
+Examples that must work:
+  safe_join("/srv/data", "a.txt")        -> "/srv/data/a.txt"
+  safe_join("/srv/data", "sub/a.txt")    -> "/srv/data/sub/a.txt"
+  safe_join("/srv/data", "a/../b.txt")   -> "/srv/data/b.txt"
+
+Examples that must raise ValueError:
+  safe_join("/srv/data", "../etc/passwd")
+  safe_join("/srv/data", "/etc/passwd")
+  safe_join("/srv/data", "a/../../etc/passwd")
+  safe_join("/srv/data", "")
+
+Return the complete new contents of safejoin.py.

@@ -1,0 +1,14 @@
+The function `make_formatters` in closure.py is wrong. Fix it.
+
+`make_formatters(prefixes)` returns a list of functions, one per prefix. Each
+returned function takes a string and returns `prefix + ": " + value`.
+
+Rules:
+- `[f("x") for f in make_formatters(["a", "b"])]` -> `["a: x", "b: x"]`
+- Each function must capture its own prefix. This is the bug: the current
+  implementation closes over the loop variable, so every function sees the
+  final value.
+- `make_formatters([])` returns an empty list.
+- Keep the function's name and signature.
+
+Return the complete new contents of closure.py.

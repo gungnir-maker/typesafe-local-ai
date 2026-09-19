@@ -1,0 +1,13 @@
+The function `normalise_tags` in tags.py is wrong. Fix it.
+
+`normalise_tags(tags)` must return a new list of the tags, lowercased,
+de-duplicated, and sorted, without modifying the list it was given.
+
+Rules:
+- `normalise_tags(["B", "a", "b"])` -> `["a", "b"]`
+- The caller's list must be unchanged after the call. This is the bug: the
+  current implementation sorts the caller's list in place.
+- Empty input returns an empty list.
+- Keep the function's name and signature.
+
+Return the complete new contents of tags.py.

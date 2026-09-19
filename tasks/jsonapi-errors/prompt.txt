@@ -1,0 +1,24 @@
+Write `error_body(errors)` in errors.py.
+
+Normalise a list of validation failures into an API error document.
+
+Each input error is a dict that may hold `field`, `code` and `message`. Return:
+
+    {
+      "errors": [
+        {"field": "email", "code": "required", "message": "Email is required."},
+        ...
+      ]
+    }
+
+Rules:
+- The input order is preserved.
+- Every output error has exactly the three keys `field`, `code`, `message`.
+- A missing `field` becomes `"base"`; a missing `code` becomes `"invalid"`;
+  a missing `message` becomes `"Invalid value."`.
+- The `field` is lowercased and stripped.
+- Non-string values for `field`, `code` or `message` raise ValueError.
+- An error that is not a dict raises ValueError.
+- An empty input returns `{"errors": []}`.
+
+Return the complete new contents of errors.py.

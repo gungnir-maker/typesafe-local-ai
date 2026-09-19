@@ -69,44 +69,47 @@ def run_one(task_id: str, model: str, repairs: int) -> int:
     task = tasks.get(task_id)
     if task is None:
         raise SystemExit(f"unknown task: {task_id}. Known: {', '.join(sorted(tasks))}")
-    result = run_task(
-        task.id, task.prompt, task.starter, task.ground_truth,
-        WORK_DIR / f"{task.id}-run", model=model, max_repairs=repairs,
-    )
+    result = run_task(task, WORK_DIR / f"{task.id}-run", model=model, max_repairs=repairs)
     print(json.dumps(_summarise(result), indent=2))
     return 0 if result.ready else 1
 
 
-def bench(model: str, repairs: int) -> int:
+def bench(model: str, repairs: int, only: str = "") -> int:
     """Run every task unsteered and with one bounded repair pass, side by side.
 
     Two arms over the same tasks, because a repair loop that is not compared
-    against no repair has not been shown to do anything.
+    against no repair has not been shown to do anything. Results are grouped by
+    category: an aggregate over a mixed set hides which kind of work the model
+    can actually do.
     """
-    tasks = load_tasks(TASKS_DIR)
+    tasks = [task for task in load_tasks(TASKS_DIR) if not only or task.id.startswith(only)]
     if not tasks:
         raise SystemExit(f"no tasks found under {TASKS_DIR}")
 
     plain_ready = steered_ready = 0
+    by_category: dict[str, list[int]] = {}
     rows: list[str] = []
+
+    def cell(result: RunResult, key: str) -> str:
+        value = _summarise(result)[key]
+        return "-" if value is None else str(value)
+
+    width = max(len(task.id) for task in tasks)
     for task in tasks:
-        plain = run_task(
-            task.id, task.prompt, task.starter, task.ground_truth,
-            WORK_DIR / "plain", model=model, max_repairs=0,
-        )
-        steered = run_task(
-            task.id, task.prompt, task.starter, task.ground_truth,
-            WORK_DIR / "steered", model=model, max_repairs=repairs,
-        )
+        plain = run_task(task, WORK_DIR / "plain", model=model, max_repairs=0)
+        steered = run_task(task, WORK_DIR / "steered", model=model, max_repairs=repairs)
+
         plain_ready += int(plain.ready)
         steered_ready += int(steered.ready)
 
-        def cell(result, key):
-            value = _summarise(result)[key]
-            return "-" if value is None else str(value)
+        category = task.id.split("-", 1)[0]
+        tally = by_category.setdefault(category, [0, 0, 0])
+        tally[0] += 1
+        tally[1] += int(plain.deterministic_passed)
+        tally[2] += int(steered.deterministic_passed)
 
         rows.append(
-            f"{task.id:<10} {cell(plain, 'deterministic_passed'):<6} "
+            f"{task.id:<{width}} {cell(plain, 'deterministic_passed'):<6} "
             f"{cell(plain, 'semantic_score'):<6} {cell(plain, 'ready'):<6} | "
             f"{cell(steered, 'deterministic_passed'):<6} "
             f"{cell(steered, 'semantic_score'):<6} {cell(steered, 'ready'):<6} "
@@ -114,12 +117,21 @@ def bench(model: str, repairs: int) -> int:
         )
 
     total = len(tasks)
-    print(f"model: {model}   tasks: {total}")
+    print(f"model: {model}   tasks: {total}   repairs allowed: {repairs}")
     print()
-    print(f"{'task':<10} {'det':<6} {'score':<6} {'ready':<6} | {'det':<6} {'score':<6} {'ready':<6} repairs")
-    print(f"{'-' * 10} {'-' * 6} {'-' * 6} {'-' * 6} | {'-' * 6} {'-' * 6} {'-' * 6} -------")
+    print(f"{'task':<{width}} {'det':<6} {'score':<6} {'ready':<6} | "
+          f"{'det':<6} {'score':<6} {'ready':<6} repairs")
+    print(f"{'-' * width} {'-' * 6} {'-' * 6} {'-' * 6} | {'-' * 6} {'-' * 6} {'-' * 6} -------")
     for row in rows:
         print(row)
+
+    print()
+    print(f"{'category':<12} {'tasks':<6} {'unsteered':<10} {'one repair'}")
+    print(f"{'-' * 12} {'-' * 6} {'-' * 10} {'-' * 10}")
+    for category in sorted(by_category):
+        count, plain_hits, steered_hits = by_category[category]
+        print(f"{category:<12} {count:<6} {plain_hits:<10} {steered_hits}")
+
     print()
     print(f"unsteered      : {plain_ready}/{total} ready")
     print(f"one repair pass: {steered_ready}/{total} ready")
@@ -142,6 +154,7 @@ def main() -> int:
     bench_parser = subparsers.add_parser("bench")
     bench_parser.add_argument("--model", default="llama3.2")
     bench_parser.add_argument("--repairs", type=int, default=1)
+    bench_parser.add_argument("--only", default="", help="restrict to task ids with this prefix")
     args = parser.parse_args()
     if args.command == "demo":
         return demo()
@@ -150,7 +163,7 @@ def main() -> int:
     if args.command == "run":
         return run_one(args.task, args.model, args.repairs)
     if args.command == "bench":
-        return bench(args.model, args.repairs)
+        return bench(args.model, args.repairs, args.only)
     return review_file(args.completion, args.model)
 
 

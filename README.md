@@ -65,8 +65,34 @@ python3 -m src.cli bench                                 # every task, unsteered
 ```
 
 Tasks live in `tasks/<id>/`: `prompt.txt` is what the model sees, `repo/` is
-the starting code, and `ground_truth.py` is the hidden test that decides
-correctness.
+the starting code, and `ground_truth.py` (or `.js`) is the hidden test that
+decides correctness. The id prefix is the category.
+
+| category | tasks | what it covers |
+| --- | --- | --- |
+| `python-` | 5 | string, sequence, parsing, numeral work |
+| `js-` | 4 | the same kind of work in JavaScript, graded by `node --test` |
+| `jsonapi-` | 3 | pagination, response envelopes, error documents |
+| `bugfix-` | 4 | real defects: an off-by-one, in-place mutation, a shared default, late binding |
+| `docs-` | 3 | making documentation agree with the code |
+| `security-` | 4 | path traversal, HTML escaping, SQL parameterisation, constant-time comparison |
+
+Every fixture is checked in both directions by `tools/validate_fixtures.py`:
+the starter must **fail** its hidden test — otherwise the task is not actually
+undone — and a reference solution must **pass** it, otherwise the fixture is
+unsatisfiable and every model failure would be the benchmark's fault. Both
+halves matter; a fixture that always fails looks exactly like a weak model.
+
+```bash
+python3 tools/validate_fixtures.py
+```
+
+The `docs-` and `security-sql` tasks are graded by structural assertions
+rather than by exercising behaviour — the documentation tests read the file
+and check the stated facts, and the SQL test inspects the query that reaches
+`execute` instead of running a database. That is weaker ground truth than a
+test that runs the code, and it is recorded as such rather than presented as
+equivalent.
 
 ## Safety
 
@@ -102,5 +128,9 @@ missing key, or a command that cannot run all produce a refusal, never a pass.
 
 `npm run bench` in [typesafe-core](https://github.com/gungnir-maker/typesafe-core)
 measures this critic as a gate, and `python3 -m src.cli bench` measures the
-repair loop. Both, with their numbers and their caveats, are in
+repair loop.
+
+Headline, over 23 tasks with `llama3.2`: **2/23 ready unsteered, 4/23 after one
+repair pass** — and the judge refused one task whose tests passed and whose
+work was correct. All of it, with the caveats, is in
 [docs/benchmark.md](docs/benchmark.md).

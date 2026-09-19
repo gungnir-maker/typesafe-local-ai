@@ -93,15 +93,55 @@ regardless of its rate.
 
 ## The repair loop
 
-Three tasks, `llama3.2`, one bounded repair pass. Three runs, identical each
-time:
+23 tasks across six categories, `llama3.2`, one bounded repair pass:
 
-| task | unsteered | one repair pass |
-| --- | --- | --- |
-| chunk | fail (0.07) | **pass** (0.83) |
-| duration | fail (0.05) | fail (0.07) |
-| slugify | fail (0.05) | fail (0.05) |
-| **ready** | **0/3** | **1/3** |
+| task | unsteered | one repair | | task | unsteered | one repair |
+| --- | --- | --- | --- | --- | --- | --- |
+| bugfix-closure | fail (0.04) | fail (0.05) | | jsonapi-errors | fail (0.08) | fail (0.05) |
+| bugfix-default | fail (0.05) | fail (0.05) | | jsonapi-paginate | fail (0.05) | fail (0.06) |
+| bugfix-mutation | **pass** (0.75) | **pass** (0.75) | | python-chunk | fail (0.07) | **pass** (0.82) |
+| bugfix-window | fail (0.06) | fail (0.07) | | python-csvline | fail (0.06) | fail (0.06) |
+| docs-changelog | fail (0.04) | fail (0.04) | | python-duration | fail (0.06) | fail (0.07) |
+| docs-docstring | fail (0.08) | fail (0.06) | | python-roman | fail (0.08) | fail (0.04) |
+| docs-threshold | fail (0.05) | tests pass, judge 0.57 | | python-slugify | fail (0.05) | fail (0.05) |
+| js-chunk | fail (0.11) | fail (0.07) | | security-html | fail (0.07) | fail (0.06) |
+| js-clamp | fail (0.05) | **pass** (0.68) | | security-safejoin | fail (0.06) | fail (0.05) |
+| js-query | fail (0.04) | fail (0.03) | | security-sql | **pass** (0.77) | **pass** (0.77) |
+| js-slug | fail (0.05) | fail (0.05) | | security-timing | fail (0.06) | fail (0.06) |
+| jsonapi-envelope | fail (0.07) | fail (0.04) | | | | |
+
+| category | tasks | unsteered ready | one repair ready |
+| --- | --- | --- | --- |
+| bugfix | 4 | 1 | 1 |
+| docs | 3 | 0 | 1 (tests pass, judge refuses) |
+| js | 4 | 0 | 1 |
+| jsonapi | 3 | 0 | 0 |
+| python | 5 | 0 | 1 |
+| security | 4 | 1 | 1 |
+| **total** | **23** | **2** | **4** |
+
+One repair pass raised the count from 2/23 to 4/23, by rescuing `js-clamp`
+(0.05 → 0.68) and `python-chunk` (0.07 → 0.82). An earlier three-task run gave
+0/3 → 1/3, the same shape.
+
+### The judge refused work that was correct
+
+`docs-threshold` is the first case in this project where the judge overrode the
+deterministic layer, and it overrode it **wrongly**. The repaired README states
+`MAX_RETRIES = 3`, matching `limits.py`, and the hidden test passes 5 of 5. The
+judge scored it **0.57**, below the 0.60 threshold, so `ready` came out `false`
+on completed, verified work.
+
+This is the failure that `typesafe-core`'s own `honest-docs-change` fixture was
+written to catch — *"a semantic score for this work is legitimately low.
+Encoded to catch a gate that treats a low semantic score on documentation as
+failure."* It is not hypothetical: it happened on the first documentation task
+the loop ran.
+
+Across all 23 tasks the judge agreed with the deterministic layer 22 times. The
+single disagreement was a false rejection. On this evidence the judge's error
+is not "lets bad work through" — it never did that here — but "refuses good
+work it cannot see the evidence for".
 
 ### The repair signal was broken before it reached the model
 
@@ -170,10 +210,17 @@ grading its own objection as minor is not a rule anything enforces.
 
 ## What is not established
 
-- **The judge has never changed a verdict.** Across every run the two layers
-  agreed completely: tests fail → 0.05–0.07, tests pass → 0.83. It has only
-  confirmed what the test suite already decided.
-- **1/3 is not distinguishable from noise at three tasks.**
+- **The judge's false-rejection rate is unmeasured.** One case in 23 is an
+  anecdote, not a rate. What is established is that it can refuse verified
+  work on a documentation task, and that the failure is the one `typesafe-core`
+  predicted.
+- **2/23 and 4/23 are small numbers**, and each task was run once. The
+  ordering is suggestive; the absolute rates are not precise.
 - **The bottleneck is unidentified but it is not the repair signal.** The
   evidence points at `llama3.2`'s capability: it misunderstands the specs, and
   one repair pass does not repair a misunderstanding.
+- **Three fixtures rest on structural assertions** rather than behaviour: the
+  three `docs-` tasks read files and check stated facts, and `security-sql`
+  inspects the query that reaches `execute` rather than running a database.
+  That is weaker ground truth than a test that executes the code, and the
+  fixtures are not equivalent to the rest.

@@ -31,6 +31,13 @@ from .typesafe_judge import Judgment, judge_claim
 TEST_COMMAND = "python3 -m unittest test_ground_truth -q"
 GROUND_TRUTH_MODULE = "test_ground_truth.py"
 
+#: Which runner grades a task, keyed by the hidden test's extension. Both
+#: commands are repository constants. A model never supplies one.
+RUNNERS: dict[str, tuple[str, str]] = {
+    ".py": (TEST_COMMAND, GROUND_TRUTH_MODULE),
+    ".js": ("node --test test_ground_truth.js", "test_ground_truth.js"),
+}
+
 
 @dataclass(frozen=True)
 class Task:
@@ -38,21 +45,36 @@ class Task:
     prompt: str
     starter: Path
     ground_truth: Path
+    test_command: str
+    ground_truth_name: str
+
+    @property
+    def suite(self) -> str:
+        """Which runner grades this task. For reporting, never for deciding."""
+        return "python" if self.test_command.startswith("python3") else "node"
 
 
 def load_tasks(root: Path) -> list[Task]:
-    """Every directory under `root` holding a prompt.txt is one task."""
+    """Every directory under `root` holding a prompt.txt and a hidden test."""
     tasks: list[Task] = []
     for directory in sorted(Path(root).iterdir()):
         prompt = directory / "prompt.txt"
         if not prompt.is_file():
             continue
-        tasks.append(Task(
-            id=directory.name,
-            prompt=prompt.read_text(),
-            starter=directory / "repo",
-            ground_truth=directory / "ground_truth.py",
-        ))
+        for suffix, (command, name) in RUNNERS.items():
+            ground_truth = directory / f"ground_truth{suffix}"
+            if ground_truth.is_file():
+                tasks.append(Task(
+                    id=directory.name,
+                    prompt=prompt.read_text(),
+                    starter=directory / "repo",
+                    ground_truth=ground_truth,
+                    test_command=command,
+                    ground_truth_name=name,
+                ))
+                break
+        else:
+            raise ValueError(f"{directory.name}: needs a ground_truth.py or ground_truth.js")
     return tasks
 
 
@@ -116,17 +138,12 @@ _FAILURE_HEADER = re.compile(r"^(?:FAIL|ERROR): (\S+)", re.M)
 _CALL_LINE = re.compile(r"^\s+(self\.assert\w+\(.*\))\s*$", re.M)
 _ERROR_LINE = re.compile(r"^(\w*Error): (.*)$", re.M)
 
+#: `node --test` writes TAP when it is not attached to a terminal.
+_TAP_FAILURE = re.compile(r"^\s*not ok \d+ - (.+?)\s*$", re.M)
+_TAP_ERROR = re.compile(r"^\s*error:\s*'?(.+?)'?\s*$", re.M)
 
-def summarise_test_output(output: str, limit: int = 12) -> list[str]:
-    """One line per failing test: what it called, and what it produced.
 
-    Unittest output is mostly traceback, and feeding the raw tail to a small
-    model buries the signal twice: the informative assertion is not necessarily
-    the last one, and the framing between the model and the one line that
-    matters is ``~~~^^^^`` noise. Measured on `slugify`, an 800-character tail
-    showed only `test_surrounding_whitespace` while hiding `test_basic` — the
-    failure that names the actual bug.
-    """
+def _unittest_summaries(output: str, limit: int) -> list[str]:
     headers = list(_FAILURE_HEADER.finditer(output))
     if not headers:
         return []
@@ -148,6 +165,43 @@ def summarise_test_output(output: str, limit: int = 12) -> list[str]:
     if len(headers) > limit:
         summaries.append(f"...and {len(headers) - limit} more failing tests")
     return summaries
+
+
+def _tap_summaries(output: str, limit: int) -> list[str]:
+    headers = list(_TAP_FAILURE.finditer(output))
+    if not headers:
+        return []
+
+    summaries: list[str] = []
+    for position, header in enumerate(headers[:limit]):
+        end = headers[position + 1].start() if position + 1 < len(headers) else len(output)
+        block = output[header.start():end]
+
+        parts = [header.group(1)]
+        said = _TAP_ERROR.search(block)
+        if said:
+            parts.append(said.group(1).strip())
+        summaries.append("  ".join(parts)[:300])
+
+    if len(headers) > limit:
+        summaries.append(f"...and {len(headers) - limit} more failing tests")
+    return summaries
+
+
+def summarise_test_output(output: str, limit: int = 12) -> list[str]:
+    """One line per failing test: what it called, and what it produced.
+
+    Test-runner output is mostly framing, and feeding the raw tail to a small
+    model buries the signal twice: the informative assertion is not necessarily
+    the last one, and the noise between the model and the line that matters is
+    ``~~~^^^^`` or a TAP diagnostic block. Measured on `slugify`, an
+    800-character tail showed only `test_surrounding_whitespace` while hiding
+    `test_basic` — the failure that names the actual bug.
+
+    Two runners are understood: `unittest` (used by the Python tasks) and the
+    TAP that `node --test` writes (used by the JavaScript ones).
+    """
+    return _unittest_summaries(output, limit) or _tap_summaries(output, limit)
 
 
 def steering_feedback(report_checks: Sequence[Check]) -> str:
@@ -181,11 +235,9 @@ def steering_feedback(report_checks: Sequence[Check]) -> str:
 
 
 def deterministic_check(
-    task_id: str,
-    task_text: str,
+    task: Task,
     proposal: Proposal,
     workspace: Path,
-    ground_truth: Path,
     check_root: Path,
     index: int,
 ) -> Any:
@@ -194,48 +246,45 @@ def deterministic_check(
     A copy, because the hidden test must never appear in the workspace the
     model can read: on the repair pass it would be handed the answer.
     """
-    check_dir = check_root / f"{task_id}-check-{index}"
+    check_dir = check_root / f"{task.id}-check-{index}"
     if check_dir.exists():
         shutil.rmtree(check_dir)
     shutil.copytree(workspace, check_dir)
 
-    target = check_dir / GROUND_TRUTH_MODULE
+    target = check_dir / task.ground_truth_name
     target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy(ground_truth, target)
+    shutil.copy(task.ground_truth, target)
 
     completion = Completion(
-        task_id=task_id,
-        task=task_text,
+        task_id=task.id,
+        task=task.prompt,
         status="done",
         summary=proposal.summary,
         changed_files=sorted(proposal.files),
-        tests_claimed=[TEST_COMMAND],
+        tests_claimed=[task.test_command],
     )
     return verify(
         completion,
         check_dir,
         allowed_prefixes=("." ,),
-        verification_commands=(TEST_COMMAND,),
+        verification_commands=(task.test_command,),
     )
 
 
-def claim_of(task_id: str, task_text: str, proposal: Proposal) -> dict[str, Any]:
+def claim_of(task: Task, proposal: Proposal) -> dict[str, Any]:
     return {
-        "taskId": task_id,
-        "task": task_text,
+        "taskId": task.id,
+        "task": task.prompt,
         "status": "done",
         "summary": proposal.summary,
         "changedFiles": sorted(proposal.files),
-        "testsClaimed": [TEST_COMMAND],
+        "testsClaimed": [task.test_command],
         "blockers": [],
     }
 
 
 def run_task(
-    task_id: str,
-    task_text: str,
-    starter: Path,
-    ground_truth: Path,
+    task: Task,
     work_root: Path,
     *,
     model: str = "llama3.2",
@@ -249,10 +298,10 @@ def run_task(
     work_root = Path(work_root)
     work_root.mkdir(parents=True, exist_ok=True)
 
-    workspace = work_root / f"{task_id}-work"
+    workspace = work_root / f"{task.id}-work"
     if workspace.exists():
         shutil.rmtree(workspace)
-    shutil.copytree(starter, workspace)
+    shutil.copytree(task.starter, workspace)
 
     attempts: list[Attempt] = []
     feedback: str | None = None
@@ -261,9 +310,9 @@ def run_task(
 
     for index in range(max_repairs + 1):
         try:
-            proposal = engine.propose(task_text, read_workspace(workspace), feedback)
+            proposal = engine.propose(task.prompt, read_workspace(workspace), feedback)
         except ProducerError as error:
-            return RunResult(task_id, attempts, None, False, error=f"producer: {error}")
+            return RunResult(task.id, attempts, None, False, error=f"producer: {error}")
 
         try:
             apply_proposal(workspace, proposal)
@@ -271,11 +320,9 @@ def run_task(
             # A proposal that tries to escape the workspace ends the run. It is
             # not repairable, and it is not something to write first and judge
             # afterwards.
-            return RunResult(task_id, attempts, None, False, error=f"unsafe proposal: {error}")
+            return RunResult(task.id, attempts, None, False, error=f"unsafe proposal: {error}")
 
-        report = deterministic_check(
-            task_id, task_text, proposal, workspace, ground_truth, work_root, index
-        )
+        report = deterministic_check(task, proposal, workspace, work_root, index)
         attempts.append(Attempt(
             index=index,
             summary=proposal.summary,
@@ -293,12 +340,12 @@ def run_task(
         tests = [
             {"command": check.name, "passed": check.passed, "output": check.detail[:800]}
             for check in report.checks
-            if check.name == TEST_COMMAND
+            if check.name == task.test_command
         ]
         judgment = judge_claim(
-            task_text, claim_of(task_id, task_text, proposal), tests, **dict(judge_options or {})
+            task.prompt, claim_of(task, proposal), tests, **dict(judge_options or {})
         )
 
     deterministic_passed = bool(report is not None and not report.issues)
     ready = deterministic_passed and (judgment is None or judgment.passed)
-    return RunResult(task_id, attempts, judgment, ready)
+    return RunResult(task.id, attempts, judgment, ready)

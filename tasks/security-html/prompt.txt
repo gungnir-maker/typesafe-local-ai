@@ -1,0 +1,25 @@
+Write `escape_html(text)` in htmlesc.py.
+
+Escape a string for safe interpolation into HTML text content and quoted
+attribute values.
+
+Rules:
+- `&` becomes `&amp;`
+- `<` becomes `&lt;`
+- `>` becomes `&gt;`
+- `"` becomes `&quot;`
+- `'` becomes `&#x27;`
+- `&` must be escaped first, so an existing `&amp;` in the input becomes
+  `&amp;amp;` and is not double-decoded.
+- Non-string input raises TypeError.
+- An empty string returns an empty string.
+
+Examples that must work:
+  '<script>'            -> '&lt;script&gt;'
+  'a & b'               -> 'a &amp; b'
+  '&amp;'               -> '&amp;amp;'
+  '"x" \'y\''           -> '&quot;x&quot; &#x27;y&#x27;'
+  'plain'               -> 'plain'
+  ''                    -> ''
+
+Return the complete new contents of htmlesc.py.

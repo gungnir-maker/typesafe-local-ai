@@ -1,0 +1,16 @@
+Write `clamp(value, min, max)` in range.js.
+
+Constrain a number to an inclusive range.
+
+Rules:
+- `clamp(5, 1, 10)` -> 5
+- `clamp(0, 1, 10)` -> 1
+- `clamp(99, 1, 10)` -> 10
+- `clamp(-0.5, -1, 1)` -> -0.5
+- The bounds are inclusive, so `clamp(1, 1, 10)` is 1 and `clamp(10, 1, 10)` is 10.
+- If any argument is not a finite number, throw a TypeError.
+- If `min` is greater than `max`, throw a RangeError.
+
+The file exports `clamp` with `module.exports`.
+
+Return the complete new contents of range.js.

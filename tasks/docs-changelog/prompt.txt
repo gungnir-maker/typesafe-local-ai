@@ -1,0 +1,15 @@
+Record a behaviour change in CHANGELOG.md.
+
+The change: the default request timeout was raised from 10 seconds to 30
+seconds.
+
+Rules:
+- Change only CHANGELOG.md.
+- Add a new entry under an `## Unreleased` heading at the top of the file. If
+  no such heading exists, create one.
+- The entry must be a bullet under a `### Changed` subheading within Unreleased.
+- The bullet must mention the timeout and both numbers, 10 and 30, with the
+  new default clearly identified as 30.
+- Keep every existing entry intact.
+
+Return the complete new contents of CHANGELOG.md.

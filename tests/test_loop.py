@@ -6,6 +6,7 @@ from src.core import Check
 from src.loop import (
     GROUND_TRUTH_MODULE,
     TEST_COMMAND,
+    Task,
     apply_proposal,
     claim_of,
     deterministic_check,
@@ -16,6 +17,18 @@ from src.loop import (
 from src.producer import Proposal, parse_proposal
 
 TASKS_DIR = Path(__file__).resolve().parent.parent / "tasks"
+
+
+def task_named(task_id: str, starter: Path, ground_truth: Path) -> Task:
+    """A Task for tests that only care about the fields under test."""
+    return Task(
+        id=task_id,
+        prompt="task",
+        starter=starter,
+        ground_truth=ground_truth,
+        test_command=TEST_COMMAND,
+        ground_truth_name=GROUND_TRUTH_MODULE,
+    )
 
 
 class ProposalParsingTests(unittest.TestCase):
@@ -144,7 +157,8 @@ class TrustBoundaryTests(unittest.TestCase):
         self.assertFalse(hasattr(proposal, "tests_claimed"))
 
     def test_the_claim_command_comes_from_a_module_constant(self):
-        claim = claim_of("t", "do it", Proposal("s", {"a.py": "x"}))
+        claim = claim_of(task_named("t", Path("."), Path("ground_truth.py")),
+                         Proposal("s", {"a.py": "x"}))
         self.assertEqual(claim["testsClaimed"], [TEST_COMMAND])
 
     def test_a_shell_metacharacter_in_a_filename_stays_a_filename(self):
@@ -152,7 +166,7 @@ class TrustBoundaryTests(unittest.TestCase):
         # command: nothing downstream executes a path.
         proposal = parse_proposal({"summary": "s", "files": {"weird; name.py": "x = 1\n"}}, "test")
         self.assertEqual(list(proposal.files), ["weird; name.py"])
-        claim = claim_of("t", "do it", proposal)
+        claim = claim_of(task_named("t", Path("."), Path("ground_truth.py")), proposal)
         self.assertEqual(claim["changedFiles"], ["weird; name.py"])
         self.assertEqual(claim["testsClaimed"], [TEST_COMMAND])
 
@@ -244,8 +258,9 @@ class GroundTruthContainmentTests(unittest.TestCase):
             )
 
             report = deterministic_check(
-                "t", "task", Proposal("s", {"mod.py": "x = 1\n"}),
-                workspace, ground_truth, root, 0,
+                task_named("t", workspace, ground_truth),
+                Proposal("s", {"mod.py": "x = 1\n"}),
+                workspace, root, 0,
             )
 
             self.assertTrue(report.ready)
@@ -268,8 +283,9 @@ class GroundTruthContainmentTests(unittest.TestCase):
                 workspace.mkdir()
                 (workspace / "mod.py").write_text("x = 1\n")
                 deterministic_check(
-                    task_id, "task", Proposal("s", {"mod.py": "x = 1\n"}),
-                    workspace, source, root, 1,
+                    task_named(task_id, workspace, source),
+                    Proposal("s", {"mod.py": "x = 1\n"}),
+                    workspace, root, 1,
                 )
 
             self.assertTrue((root / "alpha-check-1").is_dir())
@@ -277,9 +293,18 @@ class GroundTruthContainmentTests(unittest.TestCase):
 
 
 class TaskLoadingTests(unittest.TestCase):
-    def test_finds_the_shipped_tasks(self):
-        ids = sorted(task.id for task in load_tasks(TASKS_DIR))
-        self.assertEqual(ids, ["chunk", "duration", "slugify"])
+    def test_loads_the_shipped_tasks(self):
+        tasks = load_tasks(TASKS_DIR)
+        self.assertGreaterEqual(len(tasks), 20, "the benchmark is meant to be at least 20 tasks")
+        ids = [task.id for task in tasks]
+        self.assertEqual(len(ids), len(set(ids)), "task ids must be unique")
+
+    def test_every_category_is_represented(self):
+        categories = {task.id.split("-", 1)[0] for task in load_tasks(TASKS_DIR)}
+        self.assertEqual(
+            categories,
+            {"bugfix", "docs", "js", "jsonapi", "python", "security"},
+        )
 
     def test_every_task_has_a_prompt_a_starter_and_a_ground_truth(self):
         for task in load_tasks(TASKS_DIR):
@@ -288,10 +313,71 @@ class TaskLoadingTests(unittest.TestCase):
                 self.assertTrue(task.starter.is_dir())
                 self.assertTrue(task.ground_truth.is_file())
 
+    def test_javascript_tasks_are_graded_by_node(self):
+        for task in load_tasks(TASKS_DIR):
+            with self.subTest(task=task.id):
+                if task.ground_truth.suffix == ".js":
+                    self.assertEqual(task.test_command, "node --test test_ground_truth.js")
+                    self.assertEqual(task.ground_truth_name, "test_ground_truth.js")
+                    self.assertEqual(task.suite, "node")
+                else:
+                    self.assertEqual(task.test_command, TEST_COMMAND)
+                    self.assertEqual(task.suite, "python")
+
+    def test_a_task_without_a_hidden_test_is_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / "broken").mkdir()
+            (Path(directory) / "broken" / "prompt.txt").write_text("do it")
+            with self.assertRaises(ValueError):
+                load_tasks(Path(directory))
+
+
+class FixtureContractTests(unittest.TestCase):
+    """Every fixture must be satisfiable, or failures blame the model for our bug."""
+
+    def test_every_task_has_a_reference_solution(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "validate_fixtures",
+            Path(__file__).resolve().parent.parent / "tools" / "validate_fixtures.py",
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        task_ids = {task.id for task in load_tasks(TASKS_DIR)}
+        covered = set(module.REFERENCE)
+        self.assertEqual(
+            task_ids - covered, set(),
+            "these tasks have no reference solution, so their fixture is unverified",
+        )
+        self.assertEqual(
+            covered - task_ids, set(),
+            "the validator has reference solutions for tasks that no longer exist",
+        )
+
+    def test_every_reference_solution_touches_the_starter(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "validate_fixtures",
+            Path(__file__).resolve().parent.parent / "tools" / "validate_fixtures.py",
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        for task in load_tasks(TASKS_DIR):
+            with self.subTest(task=task.id):
+                provided = module.REFERENCE[task.id]
+                self.assertTrue(provided, "a reference solution must write something")
+                for name in provided:
+                    self.assertFalse(
+                        Path(name).is_absolute(), f"{task.id}: reference path must be relative"
+                    )
+
 
 class ClaimShapeTests(unittest.TestCase):
     def test_claim_matches_the_adapter_contract_keys(self):
-        claim = claim_of("t", "do it", Proposal("did it", {"a.py": "x"}))
+        claim = claim_of(task_named("t", Path("."), Path("ground_truth.py")),
+                         Proposal("did it", {"a.py": "x"}))
         self.assertEqual(
             sorted(claim),
             ["blockers", "changedFiles", "status", "summary", "task", "taskId", "testsClaimed"],

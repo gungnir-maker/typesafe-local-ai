@@ -1,0 +1,10 @@
+The function `divide` in mathx.py raises ValueError when the divisor is zero,
+but its docstring does not mention it. Fix the documentation.
+
+Rules:
+- Do not change the implementation. Only the docstring.
+- The docstring must state what the function does, what it returns, and that it
+  raises ValueError when `b` is zero.
+- Keep the function's name and signature.
+
+Return the complete new contents of mathx.py.

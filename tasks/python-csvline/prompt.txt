@@ -1,0 +1,22 @@
+Write `parse_csv_line(line)` in csvline.py.
+
+Split one CSV record into a list of fields.
+
+Rules:
+- Fields are separated by commas.
+- A field may be wrapped in double quotes, which allows it to contain commas.
+- Inside a quoted field, two consecutive double quotes ("") mean one literal
+  double quote.
+- Quotes that are not at the start of a field are ordinary characters.
+- An empty line returns [""].
+- Whitespace outside quotes is kept as-is; do not strip fields.
+
+Examples that must work:
+  'a,b,c'            -> ['a', 'b', 'c']
+  'a,,c'             -> ['a', '', 'c']
+  '"a,b",c'          -> ['a,b', 'c']
+  '"say ""hi""",x'   -> ['say "hi"', 'x']
+  'a,"b"'            -> ['a', 'b']
+  ''                 -> ['']
+
+Return the complete new contents of csvline.py.

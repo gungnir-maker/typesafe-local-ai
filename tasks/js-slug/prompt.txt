@@ -1,0 +1,19 @@
+Write `slugify(text, maxLength)` in slug.js.
+
+Make a URL-friendly slug, capped at a maximum length.
+
+Rules:
+- Lowercase the result.
+- Every character that is not an ASCII letter or digit becomes a single dash.
+- Runs of dashes collapse into one.
+- Leading and trailing dashes are removed.
+- The result is truncated to `maxLength` characters, and truncation must not
+  leave a trailing dash: `slugify('aaa bbb', 4)` -> `'aaa'`, and
+  `slugify('aaa bbb', 5)` -> `'aaa'` as well, not `'aaa-'`.
+- `maxLength` of 0 gives the empty string.
+- A negative `maxLength` throws a RangeError.
+- `text` must be a string; anything else throws a TypeError.
+
+The file exports `slugify` with `module.exports`.
+
+Return the complete new contents of slug.js.

@@ -1,0 +1,23 @@
+Write `int_to_roman(number)` in roman.py.
+
+Convert an integer to its Roman numeral.
+
+Rules:
+- 1 <= number <= 3999. Anything outside that range raises ValueError.
+- Use the subtractive forms: 4 is "IV", not "IIII". Likewise 9 "IX",
+  40 "XL", 90 "XC", 400 "CD", 900 "CM".
+- The result is uppercase.
+
+Examples:
+  1    -> "I"
+  4    -> "IV"
+  9    -> "IX"
+  14   -> "XIV"
+  40   -> "XL"
+  90   -> "XC"
+  400  -> "CD"
+  1990 -> "MCMXC"
+  2024 -> "MMXXIV"
+  3999 -> "MMMCMXCIX"
+
+Return the complete new contents of roman.py.

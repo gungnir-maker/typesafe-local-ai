@@ -1,0 +1,14 @@
+The README in this project documents a retry limit that no longer matches the
+code. Fix the documentation so it agrees with the code.
+
+`limits.py` is the source of truth. README.md is wrong.
+
+Rules:
+- Do not change limits.py. Change README.md.
+- The README must state the retry limit in the form `MAX_RETRIES = <number>`,
+  matching the value in limits.py exactly.
+- Remove or correct any other statement in the README that gives a different
+  number of retries, so the document does not contradict itself.
+- Keep the rest of the README's meaning and structure.
+
+Return the complete new contents of README.md.

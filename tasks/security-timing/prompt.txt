@@ -1,0 +1,21 @@
+Write `constant_time_equals(a, b)` in timing.py.
+
+Compare two strings without leaking, through how long the comparison takes,
+where the first difference is.
+
+Rules:
+- Return True when the two strings are equal, False otherwise. The comparison
+  is over the caller's strings; do not hash them and do not compare hashes only.
+- The running time must not depend on the position of the first differing
+  character. A loop that returns early on the first mismatch is not acceptable.
+- Both inputs must be `str`; anything else raises TypeError.
+- Strings of different lengths are unequal, and that is allowed to be visible
+  in the timing, but the length comparison must not decide the result on its
+  own when the lengths match.
+
+The test measures `time.perf_counter` over many repetitions and fails if a
+mismatch in the first character is consistently faster than a mismatch in the
+last character beyond a tolerance. Keep the work per character constant, and
+accumulate the difference rather than breaking out of the loop.
+
+Return the complete new contents of timing.py.

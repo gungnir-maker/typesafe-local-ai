@@ -1,0 +1,24 @@
+Write `page_params(query, default_size, max_size)` in pagination.py.
+
+Turn a query mapping into a `(limit, offset)` pair.
+
+`query` is a dict of string values, as parsed from a query string. It may hold
+`"page"` and `"size"`, either of which may be absent or a string.
+
+Rules:
+- `limit` is the page size, `offset` is how many records to skip.
+- Page numbers are 1-based. `page=1` is offset 0.
+- When `size` is absent, use `default_size`.
+- When `page` is absent, use page 1.
+- `size` greater than `max_size` is clamped to `max_size`; it is not an error.
+- `limit` and `offset` are always returned as ints.
+- Raise ValueError when `page` or `size` is present but not a positive integer,
+  including "0", "-1", "abc", "2.5" and "".
+
+Examples that must work:
+  page_params({}, 20, 100)                     -> (20, 0)
+  page_params({"page": "3", "size": "10"}, 20, 100) -> (10, 20)
+  page_params({"size": "500"}, 20, 100)        -> (100, 0)
+  page_params({"page": "2"}, 20, 100)          -> (20, 20)
+
+Return the complete new contents of pagination.py.

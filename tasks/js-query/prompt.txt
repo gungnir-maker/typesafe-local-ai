@@ -1,0 +1,20 @@
+Write `parseQueryString(query)` in querystring.js.
+
+Parse a URL query string into a plain object.
+
+Rules:
+- `'a=1&b=2'` -> `{ a: '1', b: '2' }`
+- A leading `?` is stripped if present.
+- Both the key and the value are percent-decoded, and `+` decodes to a space.
+- A key with no `=` gets the empty string: `'a'` -> `{ a: '' }`.
+- A key that appears more than once collects its values in an array, in order:
+  `'a=1&a=2'` -> `{ a: ['1', '2'] }`
+- A repeated key stays a plain string when it appears only once.
+- An empty string or a bare `'?'` returns `{}`.
+- Empty segments are skipped: `'a=1&&b=2'` -> `{ a: '1', b: '2' }`.
+- A value may contain `=`, which is kept: `'a=b=c'` -> `{ a: 'b=c' }`.
+- A malformed percent-escape throws a URIError (decoding raises it; let it).
+
+The file exports `parseQueryString` with `module.exports`.
+
+Return the complete new contents of querystring.js.

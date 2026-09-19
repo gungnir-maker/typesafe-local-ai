@@ -1,0 +1,18 @@
+Write `find_user(conn, name)` in userlookup.py.
+
+Look a user up by name and return the row as a tuple, or None when there is no
+match.
+
+The connection object passed in has a `.execute(sql, params)` method. The query
+must be parameterised: the user-supplied `name` must never be formatted or
+concatenated into the SQL string. The test inspects the SQL that reaches
+`.execute` and fails if the name appears in it.
+
+Rules:
+- Return the first row, or None when there is no match.
+- The SQL must select from the `users` table and filter on the `name` column.
+- The name must be passed as a bound parameter, not interpolated.
+- A name containing SQL metacharacters (quotes, semicolons, "--") is an
+  ordinary value and must be handled as data.
+
+Return the complete new contents of userlookup.py.

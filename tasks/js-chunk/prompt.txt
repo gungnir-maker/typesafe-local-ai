@@ -1,0 +1,17 @@
+Write `chunkArray(items, size)` in chunk.js.
+
+Split an array into arrays of at most `size` items, in order.
+
+Rules:
+- `chunkArray([1, 2, 3, 4, 5], 2)` -> `[[1, 2], [3, 4], [5]]`
+- `chunkArray([1, 2, 3, 4], 2)` -> `[[1, 2], [3, 4]]`
+- `chunkArray([], 3)` -> `[]`
+- `chunkArray([1, 2], 5)` -> `[[1, 2]]`
+- `size` must be a positive integer; anything else throws a RangeError,
+  including `0`, `-1`, `2.5`, and `'2'`.
+- `items` must be an array; anything else throws a TypeError.
+- The input array must not be modified.
+
+The file exports `chunkArray` with `module.exports`.
+
+Return the complete new contents of chunk.js.

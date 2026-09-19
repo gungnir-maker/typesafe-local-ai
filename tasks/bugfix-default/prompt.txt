@@ -1,0 +1,16 @@
+The function `add_tag` in tagevent.py is wrong. Fix it.
+
+`add_tag(tag, tags)` must return a list containing the existing tags plus `tag`
+appended.
+
+Rules:
+- `add_tag("a")` -> `["a"]`
+- `add_tag("b")` -> `["b"]`, not `["a", "b"]`. This is the bug: the default
+  argument is a single shared list, so state leaks from one call into the next.
+- `add_tag("c", ["x"])` -> `["x", "c"]`, and the list passed in must not be
+  modified.
+- Passing an empty list explicitly must give a list with just the new tag.
+- Keep the function's name. Callers may still call it with one argument, so
+  the default must exist and must not leak state between calls.
+
+Return the complete new contents of tagevent.py.

@@ -1,0 +1,15 @@
+The function `last_n` in window.py is wrong. Fix it.
+
+`last_n(items, n)` must return a list of the last `n` items of `items`, in the
+original order.
+
+Rules:
+- `last_n([1, 2, 3, 4, 5], 2)` -> `[4, 5]`
+- When `n` is larger than the sequence, return the whole sequence.
+- When `n` is 0, return an empty list.
+- A negative `n` raises ValueError.
+- The input must not be modified.
+- Keep the function's name and signature.
+
+The current implementation returns the wrong window. Return the complete new
+contents of window.py.
