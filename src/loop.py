@@ -18,6 +18,7 @@ work from better work, so it is the wrong thing to climb.
 
 from __future__ import annotations
 
+import re
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -93,17 +94,71 @@ def apply_proposal(workspace: Path, proposal: Proposal) -> list[str]:
     return written
 
 
-def steering_feedback(report_checks: Sequence[Check]) -> str:
-    """The repair prompt: what failed and the tail of what it said.
+_FAILURE_HEADER = re.compile(r"^(?:FAIL|ERROR): (\S+)", re.M)
+_CALL_LINE = re.compile(r"^\s+(self\.assert\w+\(.*\))\s*$", re.M)
+_ERROR_LINE = re.compile(r"^(\w*Error): (.*)$", re.M)
 
-    Deliberately concrete. A model told only "tests failed" has nothing to act
-    on, and a model told only a score has less.
+
+def summarise_test_output(output: str, limit: int = 12) -> list[str]:
+    """One line per failing test: what it called, and what it produced.
+
+    Unittest output is mostly traceback, and feeding the raw tail to a small
+    model buries the signal twice: the informative assertion is not necessarily
+    the last one, and the framing between the model and the one line that
+    matters is ``~~~^^^^`` noise. Measured on `slugify`, an 800-character tail
+    showed only `test_surrounding_whitespace` while hiding `test_basic` — the
+    failure that names the actual bug.
     """
-    lines = ["These problems were found by running the code, not by reading it:"]
-    for check in report_checks:
-        if check.passed:
-            continue
-        lines.append(f"\n- {check.name} failed. Output:\n{check.detail[-800:]}")
+    headers = list(_FAILURE_HEADER.finditer(output))
+    if not headers:
+        return []
+
+    summaries: list[str] = []
+    for position, header in enumerate(headers[:limit]):
+        end = headers[position + 1].start() if position + 1 < len(headers) else len(output)
+        block = output[header.start():end]
+
+        parts = [header.group(1)]
+        call = _CALL_LINE.search(block)
+        if call:
+            parts.append(" ".join(call.group(1).split()))
+        said = _ERROR_LINE.search(block)
+        if said:
+            parts.append(f"{said.group(1)}: {said.group(2).strip()}")
+        summaries.append("  ".join(parts)[:300])
+
+    if len(headers) > limit:
+        summaries.append(f"...and {len(headers) - limit} more failing tests")
+    return summaries
+
+
+def steering_feedback(report_checks: Sequence[Check]) -> str:
+    """The repair prompt: which checks failed, and precisely how.
+
+    Concrete on purpose. A model told only "tests failed" has nothing to act
+    on, and one handed a raw traceback tail has to find the signal itself —
+    which, on the evidence, it does not do.
+    """
+    failed = [check for check in report_checks if not check.passed]
+    if not failed:
+        return "No checks failed."
+
+    lines = [
+        f"Your previous attempt failed {len(failed)} check(s). Each line below is one "
+        "failing test: the call it made, then what it produced.",
+    ]
+    for check in failed:
+        summaries = summarise_test_output(check.detail)
+        if summaries:
+            lines.append(f"\n{check.name} ran, and these tests failed:")
+            lines.extend(f"  {index}. {text}" for index, text in enumerate(summaries, 1))
+        else:
+            lines.append(f"\n{check.name} did not run cleanly. Its output was:\n{check.detail[-800:]}")
+
+    lines.append(
+        "\nFix the cause of each failure in the code. Do not change what the tests "
+        "expect, and do not delete the behaviour they check."
+    )
     return "\n".join(lines)
 
 

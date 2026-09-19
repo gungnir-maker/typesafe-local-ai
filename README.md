@@ -91,34 +91,69 @@ test failed and quotes its output.
 `typesafe-core` refuses to run more than one, so this does too. A loop allowed
 to keep going cannot be compared against one that is not.
 
-### First result
+### The repair signal had to be fixed twice before it was even delivered
 
-Two runs of `bench` over the three shipped tasks, `llama3.2`, identical both times:
+The first repair prompt was a raw dump of the last 800 characters of the test
+output. It was worse than it looked, because the evidence in `Check.detail` is
+already truncated to the last **1000** characters by `run_verification`. Two
+truncations compounded: on `slugify`, which failed four of eight tests, the
+model was shown exactly one failure — and not the one that names the bug.
+
+Both bounds are now 8,000 characters, and `summarise_test_output` turns
+unittest output into one line per failing test: the call, then the mismatch.
+The rewrite is verified by capturing the prompt actually sent on the repair
+pass, not by reading the code:
+
+```
+Your previous attempt failed 1 check(s). Each line below is one failing test:
+the call it made, then what it produced.
+
+python3 -m unittest test_ground_truth -q ran, and these tests failed:
+  1. test_basic  self.assertEqual(slugify("Hello, World!"), "hello-world")  AssertionError: 'helloworld' != 'hello-world'
+  2. test_digits_survive  self.assertEqual(slugify("Version 2.0"), "version-2-0")  AssertionError: 'version20' != 'version-2-0'
+  3. test_strips_edges  self.assertEqual(slugify("--x--"), "x")  AssertionError: '-x-' != 'x'
+  4. test_surrounding_whitespace  self.assertEqual(slugify(" A B "), "a-b")  AssertionError: 'ab' != 'a-b'
+```
+
+### Result, and it is a negative one
+
+Three runs of `bench`, `llama3.2`, identical every time:
 
 | task | unsteered | one repair pass |
 | --- | --- | --- |
-| chunk | fail (0.06) | **pass** (0.80) |
-| duration | fail (0.05) | fail (0.05) |
+| chunk | fail (0.07) | **pass** (0.83) |
+| duration | fail (0.05) | fail (0.07) |
 | slugify | fail (0.05) | fail (0.05) |
 | **ready** | **0/3** | **1/3** |
 
-What the repair actually did, read off the artifacts rather than the totals:
+**Delivering a better signal did not change the outcome.** The repair prompt
+now names `slugify("Hello, World!")` producing `'helloworld'` instead of
+`'hello-world'` — the exact misreading, first in the list — and the model still
+responded by adding `strip('-')` while leaving the `join(... if c.isalnum())`
+filter that causes it. The signal was not the bottleneck.
 
-- **chunk** — the unsteered output stopped after 47 tokens with an unterminated
-  `raise ValueError(`, so the module would not even import. Shown the failing
-  run, the model returned a complete, correct implementation.
-- **slugify** — the repair added `strip('-')` but kept the real bug: it
-  *filters out* non-alphanumerics instead of *replacing* them with a dash, so
-  `"Hello, World!"` becomes `"helloworld"`. The failing assertion
-  (`'ab' != 'a-b'`) was in the repair prompt and the model still did not see it.
-- **duration** — the repair added branches and introduced new defects
-  (`units[text[i]]` indexed without a bounds check, `if text[i] in result`
-  comparing a character against an int).
+What the format experiment did turn up:
 
-So one pass rescued the task that failed on a broken artefact, and did not
-rescue the two that failed on a misunderstanding. That is the honest reading of
-1/3: it is not yet evidence that steering works, only that it can fix a
-truncated output.
+| task | JSON-string contract | raw-code contract |
+| --- | --- | --- |
+| duration | fail, 476 chars, cut at `raise ValueError(f` | fail, 1665 chars, complete |
+| chunk | fail, 67 chars, cut at `raise ValueError(` | **pass**, 214 chars, complete |
+| slugify | **pass**, 226 chars | fail, 187 chars |
+
+Asking for code inside a JSON string reliably truncates this model mid-expression
+— twice out of three, both times just after `raise ValueError(` where the
+escaping gets hard. Raw code never truncated. But it is a wash on correctness:
+1/3 either way, and on different tasks.
+
+The honest reading: the transport is genuinely defective and worth changing,
+the repair signal is now as good as it can be made, and neither was the
+bottleneck. `llama3.2` at 3B misunderstands these specs, and one repair pass
+does not repair a misunderstanding. Three tasks is also too few to distinguish
+1/3 from noise — this is a direction, not a measurement.
+
+The judge tracked the deterministic result closely — 0.83 on the one pass,
+0.05–0.07 on every failure — which is what the probe predicted: it is decisive
+about garbage, and says little inside the passing band.
 
 The judge tracked the deterministic result closely — 0.80 on the one pass,
 0.04–0.07 on every failure — which is the behaviour the probe predicted: it is

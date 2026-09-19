@@ -7,6 +7,11 @@ from pathlib import Path
 from typing import Any, Callable
 
 
+#: How much command output is kept as evidence. Enough for a small suite to
+#: report every failing test, not just the last one.
+OUTPUT_LIMIT = 8_000
+
+
 @dataclass(frozen=True)
 class Completion:
     task_id: str
@@ -87,7 +92,15 @@ def run_verification(command: str, workspace: Path, runner: Callable[..., Any] =
     except (OSError, subprocess.TimeoutExpired) as error:
         return Check(command, False, str(error))
     output = (result.stdout + result.stderr).strip()
-    return Check(command, result.returncode == 0, output[-1000:])
+    # The tail is kept because a build log puts its errors at the end. The bound
+    # was 1000 characters, which silently threw away all but the last failing
+    # test in a unittest run — the failure that names the bug is usually the
+    # first one, not the last. Matches the adapter's 8000-character evidence
+    # limit.
+    # ponytail: still a tail slice, so a suite reporting more than 8000
+    # characters of failures can still lose its earliest ones. Upgrade by
+    # keeping head and tail when a suite outgrows this.
+    return Check(command, result.returncode == 0, output[-OUTPUT_LIMIT:])
 
 
 def verify(

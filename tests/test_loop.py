@@ -10,6 +10,7 @@ from src.loop import (
     deterministic_check,
     load_tasks,
     steering_feedback,
+    summarise_test_output,
 )
 from src.producer import Proposal, parse_proposal
 
@@ -66,21 +67,72 @@ class ApplyingProposalTests(unittest.TestCase):
 
 
 class SteeringFeedbackTests(unittest.TestCase):
+    """Real unittest output, captured from the slugify task."""
+
+    OUTPUT = """\
+=====================================
+FAIL: test_basic (test_ground_truth.SlugifyTests.test_basic)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/w/test_ground_truth.py", line 8, in test_basic
+    self.assertEqual(slugify("Hello, World!"), "hello-world")
+AssertionError: 'helloworld' != 'hello-world'
+- helloworld
++ hello-world
+
+
+=====================================
+FAIL: test_empty (test_ground_truth.SlugifyTests.test_empty)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/w/test_ground_truth.py", line 32, in test_empty
+    self.assertEqual(slugify(""), "")
+AssertionError: None != ''
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.001s
+
+FAILED (failures=4)
+"""
+
     def test_names_only_the_failures_and_carries_their_output(self):
         checks = [
             Check("file_policy", True, "ok"),
-            Check("python3 -m unittest test_ground_truth -q", False, "AssertionError: 'ab' != 'a-b'"),
+            Check("python3 -m unittest test_ground_truth -q", False, self.OUTPUT),
         ]
         feedback = steering_feedback(checks)
         self.assertIn("AssertionError", feedback)
         self.assertNotIn("file_policy", feedback)
 
-    def test_output_is_truncated_to_its_tail(self):
-        check = Check("cmd", False, "x" * 5000 + "THE-END")
-        self.assertTrue(steering_feedback([check]).endswith("THE-END"))
+    def test_every_failing_test_is_named_not_only_the_last(self):
+        summary = summarise_test_output(self.OUTPUT)
+        self.assertEqual(len(summary), 2)
+        self.assertIn("test_basic", summary[0])
+        self.assertIn("test_empty", summary[1])
 
-    def test_no_failures_produces_a_header_only(self):
-        self.assertNotIn("failed", steering_feedback([Check("cmd", True, "ok")]))
+    def test_summary_carries_the_call_and_the_result(self):
+        first = summarise_test_output(self.OUTPUT)[0]
+        self.assertIn('slugify("Hello, World!")', first)
+        self.assertIn("'helloworld' != 'hello-world'", first)
+
+    def test_traceback_framing_is_dropped(self):
+        feedback = steering_feedback([Check("cmd", False, self.OUTPUT)])
+        self.assertNotIn("Traceback (most recent call last)", feedback)
+        self.assertNotIn("~~~", feedback)
+
+    def test_the_failure_count_is_stated(self):
+        self.assertIn("failed 1 check(s)", steering_feedback([Check("cmd", False, self.OUTPUT)]))
+
+    def test_unparseable_output_falls_back_to_its_tail(self):
+        check = Check("cmd", False, "x" * 5000 + "THE-END")
+        self.assertIn("THE-END", steering_feedback([check]))
+
+    def test_an_assert_error_without_a_fail_header_still_reaches_the_prompt(self):
+        check = Check("cmd", False, "AssertionError: 'ab' != 'a-b'")
+        self.assertIn("AssertionError: 'ab' != 'a-b'", steering_feedback([check]))
+
+    def test_no_failures_says_so(self):
+        self.assertEqual(steering_feedback([Check("cmd", True, "ok")]), "No checks failed.")
 
 
 class GroundTruthContainmentTests(unittest.TestCase):
