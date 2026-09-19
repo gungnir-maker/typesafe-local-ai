@@ -29,7 +29,7 @@ class OllamaCritic:
             result = json.loads(raw["response"])
             problems = result.get("problems", [])
             serious_problem = any(
-                item.get("severity") in {"high", "critical"}
+                item.get("severity") in {"error", "high", "critical"}
                 for item in problems
                 if isinstance(item, dict)
             )
