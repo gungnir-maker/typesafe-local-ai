@@ -54,6 +54,7 @@ class Review:
     problems: list[dict[str, str]] = field(default_factory=list)
     suggested_fixes: list[str] = field(default_factory=list)
     source: str = "none"
+    codes: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

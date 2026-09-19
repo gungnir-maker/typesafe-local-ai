@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import tempfile
+from dataclasses import asdict
 from pathlib import Path
 
 from .core import Completion, load_completion, verify
@@ -25,10 +27,22 @@ def demo() -> int:
 
 def review_file(path: Path, model: str) -> int:
     completion = load_completion(path)
-    local_review = OllamaCritic(model).review(completion)
+    local_review = OllamaCritic(model).review(asdict(completion))
     report = verify(completion, path.parent, review=local_review)
     print(json.dumps({"ready": report.ready, "issues": report.issues, "review": local_review.__dict__}, indent=2))
     return 0 if report.ready else 1
+
+
+def gate(model: str) -> int:
+    """Judge one benchmark fixture read from stdin, and print a Verdict.
+
+    This is the entry point a measurement harness calls. It is handed a claim
+    and returns a decision, with no workspace assumption baked in.
+    """
+    fixture = json.loads(sys.stdin.read())
+    local_review = OllamaCritic(model).review({"task": fixture["task"], "claim": fixture["claim"]})
+    print(json.dumps({"accepted": local_review.accepted, "score": local_review.score, "codes": local_review.codes}))
+    return 0
 
 
 def main() -> int:
@@ -38,8 +52,14 @@ def main() -> int:
     review_parser = subparsers.add_parser("review")
     review_parser.add_argument("completion", type=Path)
     review_parser.add_argument("--model", default="llama3.2")
+    gate_parser = subparsers.add_parser("gate")
+    gate_parser.add_argument("--model", default="llama3.2")
     args = parser.parse_args()
-    return demo() if args.command == "demo" else review_file(args.completion, args.model)
+    if args.command == "demo":
+        return demo()
+    if args.command == "gate":
+        return gate(args.model)
+    return review_file(args.completion, args.model)
 
 
 if __name__ == "__main__":
