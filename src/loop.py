@@ -83,11 +83,29 @@ class RunResult:
         return max(0, len(self.attempts) - 1)
 
 
+def _contained_target(root: Path, relative: str) -> Path:
+    """Where a write would actually land, refusing to leave the workspace.
+
+    Lexical checks reject `..`, but a symlink *inside* the workspace pointing
+    outside it passes every lexical test and still writes outside. The parent
+    directory is resolved, so the check is made against the real directory the
+    bytes would reach, not against the string that names it.
+    """
+    target = root / relative
+    parent = target.parent.resolve()
+    if parent != root and root not in parent.parents:
+        raise ValueError(f"refusing to write outside the workspace: {relative}")
+    if target.is_symlink():
+        raise ValueError(f"refusing to write through a symlink: {relative}")
+    return target
+
+
 def apply_proposal(workspace: Path, proposal: Proposal) -> list[str]:
     """Write the proposal's files. Paths were validated when it was parsed."""
+    root = workspace.resolve()
     written: list[str] = []
     for relative, contents in sorted(proposal.files.items()):
-        target = workspace / relative
+        target = _contained_target(root, relative)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(contents)
         written.append(relative)
@@ -247,7 +265,14 @@ def run_task(
         except ProducerError as error:
             return RunResult(task_id, attempts, None, False, error=f"producer: {error}")
 
-        apply_proposal(workspace, proposal)
+        try:
+            apply_proposal(workspace, proposal)
+        except ValueError as error:
+            # A proposal that tries to escape the workspace ends the run. It is
+            # not repairable, and it is not something to write first and judge
+            # afterwards.
+            return RunResult(task_id, attempts, None, False, error=f"unsafe proposal: {error}")
+
         report = deterministic_check(
             task_id, task_text, proposal, workspace, ground_truth, work_root, index
         )

@@ -12,6 +12,16 @@ from typing import Any, Callable
 OUTPUT_LIMIT = 8_000
 
 
+def _string_list(value: Any, field: str, *, allow_blank: bool = False) -> list[str]:
+    """A list of strings, or a refusal. Never a coercion."""
+    if not isinstance(value, list):
+        raise ValueError(f"{field} must be a list of strings")
+    for item in value:
+        if not isinstance(item, str) or (not allow_blank and not item.strip()):
+            raise ValueError(f"{field} must be a list of non-empty strings")
+    return list(value)
+
+
 @dataclass(frozen=True)
 class Completion:
     task_id: str
@@ -24,24 +34,36 @@ class Completion:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Completion":
+        """Validate a claim strictly, by type rather than by truthiness.
+
+        A claim is attacker-controlled input. A claim that parses into the
+        wrong shape scores wrong without saying so, so every field is checked
+        for what it actually is.
+        """
+        if not isinstance(data, dict):
+            raise ValueError("completion must be a JSON object")
+
         required = ("taskId", "task", "status", "summary", "changedFiles")
         missing = [key for key in required if key not in data]
         if missing:
             raise ValueError(f"missing fields: {', '.join(missing)}")
+
+        for key in ("taskId", "task", "summary"):
+            value = data[key]
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{key} must be a non-empty string")
+
         if data["status"] not in {"done", "blocked", "in_progress"}:
             raise ValueError("status must be done, blocked, or in_progress")
-        if not isinstance(data["changedFiles"], list) or not all(
-            isinstance(item, str) for item in data["changedFiles"]
-        ):
-            raise ValueError("changedFiles must be a list of strings")
+
         return cls(
             task_id=data["taskId"],
             task=data["task"],
             status=data["status"],
             summary=data["summary"],
-            changed_files=data["changedFiles"],
-            tests_claimed=data.get("testsClaimed", []),
-            blockers=data.get("blockers", []),
+            changed_files=_string_list(data["changedFiles"], "changedFiles"),
+            tests_claimed=_string_list(data.get("testsClaimed", []), "testsClaimed"),
+            blockers=_string_list(data.get("blockers", []), "blockers", allow_blank=True),
         )
 
 
@@ -79,6 +101,15 @@ def _path_is_allowed(path: str, allowed_prefixes: tuple[str, ...]) -> bool:
 
 
 def run_verification(command: str, workspace: Path, runner: Callable[..., Any] = subprocess.run) -> Check:
+    """Run one operator-supplied command and keep its output as evidence.
+
+    TRUST BOUNDARY. This executes through a shell, so the command string is
+    code. It may only ever come from operator configuration — the CLI, a
+    config file, or a module constant. It must never be derived from model
+    output, a completion claim, or any other untrusted input. `verify` refuses
+    a command that is not a non-empty string, and the loop builds its command
+    from a constant, never from a proposal.
+    """
     try:
         result = runner(
             command,
@@ -122,6 +153,12 @@ def verify(
         issues.append("FILE_OUTSIDE_ALLOWED_PREFIX")
 
     for command in verification_commands:
+        # The trust boundary, enforced rather than assumed: a command is only
+        # ever run when it is a non-empty string. Anything else fails closed.
+        if not isinstance(command, str) or not command.strip():
+            checks.append(Check(str(command), False, "command must be a non-empty string"))
+            issues.append("INVALID_COMMAND")
+            continue
         check = run_verification(command, workspace)
         checks.append(check)
         if not check.passed:
