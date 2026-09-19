@@ -1,0 +1,24 @@
+Write `parse_duration(text)` in durations.py.
+
+Parse a duration string into a whole number of seconds.
+
+The format is a sequence of `<integer><unit>` segments, where unit is one of
+  h = hours, m = minutes, s = seconds
+
+Segments must appear in that order — hours, then minutes, then seconds. Any of
+them may be omitted, but each unit may appear at most once.
+
+Examples that must work:
+  "1h30m"  -> 5400
+  "45s"    -> 45
+  "2h"     -> 7200
+  "10m"    -> 600
+  "1h2m3s" -> 3723
+  "0s"     -> 0
+
+Raise ValueError for anything that does not match the format, including:
+  an empty string, a value with no unit ("90"), an unknown unit ("1x"),
+  a repeated unit ("1h1h"), units out of order ("30m1h"), and a
+  non-numeric part ("ah").
+
+Return the complete new contents of durations.py.

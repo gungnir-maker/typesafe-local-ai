@@ -1,0 +1,22 @@
+Write `slugify(text)` in textlib.py.
+
+Return a URL-safe slug of the input string.
+
+Rules:
+- Every character that is not an ASCII letter (a-z, A-Z) or an ASCII digit (0-9)
+  becomes a single dash.
+- Lowercase the result.
+- Runs of consecutive dashes collapse into one dash.
+- Leading and trailing dashes are removed.
+- An empty input, or an input containing no letters or digits, returns "".
+
+Examples:
+  "Hello, World!" -> "hello-world"
+  "  A  B  "      -> "a-b"
+  "--x--"         -> "x"
+  "a---b"         -> "a-b"
+  ""              -> ""
+  "!!!"           -> ""
+  "Version 2.0"   -> "version-2-0"
+
+Return the complete new contents of textlib.py.

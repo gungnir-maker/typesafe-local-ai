@@ -1,0 +1,14 @@
+Write `chunk(items, size)` in chunks.py.
+
+Split a sequence into a list of lists, each holding at most `size` items, in
+the original order. The final chunk holds the remainder and may be shorter.
+
+Examples that must work:
+  chunk([1, 2, 3, 4, 5], 2) -> [[1, 2], [3, 4], [5]]
+  chunk([1, 2, 3, 4], 2)    -> [[1, 2], [3, 4]]
+  chunk([], 3)              -> []
+  chunk([1, 2], 5)          -> [[1, 2]]
+
+Raise ValueError when size is zero or negative.
+
+Return the complete new contents of chunks.py.
