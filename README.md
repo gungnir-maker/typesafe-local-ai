@@ -6,7 +6,8 @@ judge. Plus a loop that puts a local model to work on real tasks and measures
 whether it can be made good enough.
 
 **Measured results, including the negative ones, live in
-[docs/benchmark.md](docs/benchmark.md).**
+[docs/benchmark.md](docs/benchmark.md). Current state and open decisions are in
+[docs/status.md](docs/status.md).**
 
 ## Install
 

@@ -130,7 +130,8 @@ One repair pass raised the count from 2/23 to 4/23, by rescuing `js-clamp`
 deterministic layer, and it overrode it **wrongly**. The repaired README states
 `MAX_RETRIES = 3`, matching `limits.py`, and the hidden test passes 5 of 5. The
 judge scored it **0.57**, below the 0.60 threshold, so `ready` came out `false`
-on completed, verified work.
+on completed, verified work. Re-run: the model's own summary was *"Fixed
+README.md to match the retry limit in limits.py."* and the score was 0.58 again.
 
 This is the failure that `typesafe-core`'s own `honest-docs-change` fixture was
 written to catch — *"a semantic score for this work is legitimately low.
@@ -138,10 +139,42 @@ Encoded to catch a gate that treats a low semantic score on documentation as
 failure."* It is not hypothetical: it happened on the first documentation task
 the loop ran.
 
-Across all 23 tasks the judge agreed with the deterministic layer 22 times. The
-single disagreement was a false rejection. On this evidence the judge's error
-is not "lets bad work through" — it never did that here — but "refuses good
-work it cannot see the evidence for".
+#### How often, measured
+
+The single case was an anecdote, so it was turned into a distribution: every
+one of the 23 reference solutions — all known-correct, all with passing tests —
+was judged three times, each with an honest summary in the register this model
+actually writes (`"Implemented the change in <file> as specified."`).
+
+| category | tasks | mean score | refused |
+| --- | --- | --- | --- |
+| docs | 3 | **0.593** | **2/3** |
+| bugfix | 4 | 0.671 | 0/4 |
+| security | 4 | 0.708 | 1/4 |
+| js | 4 | 0.750 | 0/4 |
+| python | 5 | 0.760 | 0/5 |
+| jsonapi | 3 | 0.773 | 0/3 |
+
+**3 of 23 known-correct completions fall below the threshold**: `docs-docstring`
+(0.577), `docs-threshold` (0.557), `security-timing` (0.597). Repeat noise is
+±0.02, so none of these is a marginal fluke.
+
+Two systematic effects, both reproduced:
+
+- **Documentation scores about 0.15 below code on identical evidence** — docs
+  0.593 against python, js and jsonapi at 0.75–0.77.
+- **Summary register moves the score by 0.07–0.09.** For `docs-threshold`, a
+  specific summary scores 0.653 and is accepted; a terse one scores 0.567 and is
+  refused. The model writes the terse register.
+
+Caveat: the sweep used one uniform terse template, which under-scores every
+category. 3/23 is the false-rejection rate for summaries *of the kind this model
+writes*, not a universal property of the judge.
+
+Across the 23 real runs the judge agreed with the deterministic layer 22 times.
+Its error is not "lets bad work through" — it never did that here — but "refuses
+good work whose evidence it cannot see". That makes the judge's veto, not the
+test suite, the binding constraint on correct work.
 
 ### The repair signal was broken before it reached the model
 
